@@ -14,6 +14,7 @@ import (
 var (
 	pattern = "@struct2schema"
 	dbType  = flag.String("dbType", "sqlite3", "Database used for the generated SQL command, available choise: mysql/sqlite3")
+	file    = flag.String("file", "", "File contains convertable struct")
 )
 
 // SchemaInfo - saves table infos
@@ -191,13 +192,13 @@ func main() {
 	log.SetFlags(0)
 	log.SetPrefix("struct2schema: ")
 
+	flag.Parse()
+
 	const sqlTemplateStr = `
 CREATE TABLE IF NOT EXISTS {{.TableName}} ( {{$lastIdx := .LastIdx}} {{ range $idx, $field := .Fields }}
   {{.Name}} {{.ValueType}}{{ if ne $lastIdx $idx }}, {{end}}
 {{ end }} )
 `
 
-	for _, path := range os.Args[1:] {
-		processFile(path, sqlTemplateStr)
-	}
+	processFile(*file, sqlTemplateStr)
 }
