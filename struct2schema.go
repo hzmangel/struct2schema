@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"text/template"
 )
 
 var pattern = "@struct2schema"
@@ -15,6 +16,7 @@ var pattern = "@struct2schema"
 type SchemaInfo struct {
 	TableName string
 	Fields    []SchemaField
+	LastIdx   int
 }
 
 // SchemaField - saves schema field
@@ -23,7 +25,7 @@ type SchemaField struct {
 	ValueType string
 }
 
-func processFile(inputPath string) {
+func processFile(inputPath string, templateStr string) {
 	log.Printf("Processing file %s", inputPath)
 	fset := token.NewFileSet() // positions are relative to fset
 	f, err := parser.ParseFile(fset, inputPath, nil, parser.ParseComments)
@@ -44,7 +46,11 @@ func processFile(inputPath string) {
 			continue
 		}
 
-		log.Println(schemaInfo)
+		t := template.Must(template.New("sqlCommand").Parse(templateStr))
+		err := t.Execute(os.Stdout, schemaInfo)
+		if err != nil {
+			log.Println("executing template:", err)
+		}
 	}
 }
 
@@ -76,6 +82,7 @@ func getTableInfo(decl ast.Decl, schemaInfo *SchemaInfo) (found bool) {
 
 			if found == true {
 				typeSpec := spec.(*ast.TypeSpec)
+				fieldLen := 0
 
 				switch typeSpec.Type.(type) {
 				case *ast.StructType:
@@ -86,8 +93,11 @@ func getTableInfo(decl ast.Decl, schemaInfo *SchemaInfo) (found bool) {
 							ValueType: elem.Type.(*ast.Ident).Name,
 						}
 						schemaInfo.Fields = append(schemaInfo.Fields, newField)
+						fieldLen++
 					}
 				}
+
+				schemaInfo.LastIdx = fieldLen - 1
 			}
 		}
 	}
@@ -113,7 +123,13 @@ func main() {
 	log.SetFlags(0)
 	log.SetPrefix("struct2schema: ")
 
+	const sqlTemplateStr = `
+CREATE TABLE IF NOT EXISTS {{.TableName}} ( {{$lastIdx := .LastIdx}} {{ range $idx, $field := .Fields }}
+  {{.Name}} {{.ValueType}}{{ if ne $lastIdx $idx }}, {{end}}
+{{ end }} )
+`
+
 	for _, path := range os.Args[1:] {
-		processFile(path)
+		processFile(path, sqlTemplateStr)
 	}
 }
