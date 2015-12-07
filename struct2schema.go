@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -10,7 +11,10 @@ import (
 	"text/template"
 )
 
-var pattern = "@struct2schema"
+var (
+	pattern = "@struct2schema"
+	dbType  = flag.String("dbType", "sqlite3", "Database used for the generated SQL command, available choise: mysql/sqlite3")
+)
 
 // SchemaInfo - saves table infos
 type SchemaInfo struct {
@@ -46,6 +50,7 @@ func processFile(inputPath string, templateStr string) {
 			continue
 		}
 
+		// Generate SQL command via pre-defined template string
 		t := template.Must(template.New("sqlCommand").Parse(templateStr))
 		err := t.Execute(os.Stdout, schemaInfo)
 		if err != nil {
@@ -56,6 +61,8 @@ func processFile(inputPath string, templateStr string) {
 
 func getTableInfo(decl ast.Decl, schemaInfo *SchemaInfo) (found bool) {
 	genDecl, ok := decl.(*ast.GenDecl)
+
+	// Skip nil or error nodes
 	if !ok {
 		return
 	}
@@ -63,6 +70,7 @@ func getTableInfo(decl ast.Decl, schemaInfo *SchemaInfo) (found bool) {
 		return
 	}
 
+	// table structure should have commant before its code block, or it will not be handled by this generate
 	tableStructFound := false
 	for _, comment := range genDecl.Doc.List {
 		if strings.Contains(comment.Text, pattern) {
@@ -90,8 +98,9 @@ func getTableInfo(decl ast.Decl, schemaInfo *SchemaInfo) (found bool) {
 					for _, elem := range structSpec.Fields.List {
 						newField := SchemaField{
 							Name:      elem.Names[0].Name,
-							ValueType: elem.Type.(*ast.Ident).Name,
+							ValueType: typeConvert(elem.Type.(*ast.Ident).Name),
 						}
+
 						schemaInfo.Fields = append(schemaInfo.Fields, newField)
 						fieldLen++
 					}
@@ -107,6 +116,65 @@ func getTableInfo(decl ast.Decl, schemaInfo *SchemaInfo) (found bool) {
 	}
 
 	found = true
+	return
+}
+
+// Convert golang type to specified DB field type
+// TODO: Convert to getting from file or generate tool
+func typeConvert(golangFieldType string) (dbFieldType string) {
+	switch golangFieldType {
+	case "uint", "int":
+		switch *dbType {
+		case "sqlite3":
+			dbFieldType = "INTEGER"
+		case "mysql":
+			dbFieldType = "INT"
+		}
+	case "uint8", "int8", "byte":
+		switch *dbType {
+		case "sqlite3":
+			dbFieldType = "INTEGER"
+		case "mysql":
+			dbFieldType = "TINYINT"
+		}
+	case "uint16", "int16":
+		switch *dbType {
+		case "sqlite3":
+			dbFieldType = "INTEGER"
+		case "mysql":
+			dbFieldType = "SMALLINT"
+		}
+	case "uint32", "int32", "rune":
+		switch *dbType {
+		case "sqlite3":
+			dbFieldType = "INTEGER"
+		case "mysql":
+			dbFieldType = "INT"
+		}
+	case "uint64", "int64":
+		switch *dbType {
+		case "sqlite3":
+			dbFieldType = "INTEGER"
+		case "mysql":
+			dbFieldType = "BIGINT"
+		}
+
+	case "float32", "float64":
+		switch *dbType {
+		case "sqlite3":
+			dbFieldType = "REAL"
+		case "mysql":
+			dbFieldType = "FLOAT"
+		}
+
+	case "string":
+		switch *dbType {
+		case "sqlite3":
+			dbFieldType = "TEXT"
+		case "mysql":
+			dbFieldType = "MEDIUMTEXT"
+		}
+	}
 	return
 }
 
