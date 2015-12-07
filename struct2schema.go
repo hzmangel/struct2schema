@@ -38,7 +38,7 @@ func processFile(inputPath string, templateStr string) {
 		panic(err)
 	}
 
-	// ast.Print(fset, f)
+	ast.Print(fset, f)
 
 	var schemaInfo SchemaInfo
 
@@ -97,9 +97,23 @@ func getTableInfo(decl ast.Decl, schemaInfo *SchemaInfo) (found bool) {
 				case *ast.StructType:
 					structSpec := typeSpec.Type.(*ast.StructType)
 					for _, elem := range structSpec.Fields.List {
+
+						// This check is for struct inherit
+						if elem.Names == nil {
+							continue
+						}
+
 						newField := SchemaField{
-							Name:      elem.Names[0].Name,
-							ValueType: typeConvert(elem.Type.(*ast.Ident).Name),
+							Name: elem.Names[0].Name,
+						}
+
+						switch elem.Type.(type) {
+						case *ast.Ident:
+							newField.ValueType = typeConvert(elem.Type.(*ast.Ident).Name)
+						case *ast.ArrayType:
+							newField.ValueType = typeConvert(elem.Type.(*ast.ArrayType).Elt.(*ast.Ident).Name)
+						case *ast.SelectorExpr:
+							newField.ValueType = typeConvert(elem.Type.(*ast.SelectorExpr).Sel.Name)
 						}
 
 						schemaInfo.Fields = append(schemaInfo.Fields, newField)
@@ -174,6 +188,14 @@ func typeConvert(golangFieldType string) (dbFieldType string) {
 			dbFieldType = "TEXT"
 		case "mysql":
 			dbFieldType = "MEDIUMTEXT"
+		}
+
+	case "Time":
+		switch *dbType {
+		case "sqlite3":
+			dbFieldType = "NUMERIC"
+		case "mysql":
+			dbFieldType = "TIMESTAMP"
 		}
 	}
 	return
